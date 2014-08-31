@@ -1,0 +1,11 @@
+mksd v.1.0 by 50m30n3 2011
+
+This program allows you to download and upload patches from your Microkorg.
+It can also print a rough textual description of a downloaded patch.
+
+You can either use the legacy OSS midi devices at /dev/midi* to access
+the device or the ALSA rawmidi ports at /dev/snd/midi*. Both will work fine.
+
+This software is licensed under the GNU GPL V3. See LICENSE for details.
+Send bugreports and questions to someone@d00m.org.
+
