@@ -119,7 +119,7 @@ int do_dump( unsigned int channel, FILE *midiport, char *filename )
 
 	if( ! send_command( channel, 0x58, 0x10, midiport ) )
 		return 0;
-	
+
 	data = get_data( 297, midiport );
 
 	if( data != NULL )
@@ -141,7 +141,7 @@ int do_dump( unsigned int channel, FILE *midiport, char *filename )
 	}
 }
 
-int do_upload( unsigned int channel, FILE *midiport, char *filename )
+int do_upload( unsigned int channel, FILE *midiport, char *filename, int nocheck )
 {
 	unsigned char *data;
 	struct ident *ident;
@@ -158,34 +158,37 @@ int do_upload( unsigned int channel, FILE *midiport, char *filename )
 		return 0;
 	}
 
-	ident = get_ident( channel, midiport );
+	if( ! nocheck )
+	{
+		ident = get_ident( channel, midiport );
 
-	if( ident != NULL )
-	{
-		if( ident->man != 0x42 )
+		if( ident != NULL )
 		{
-			fputs( "do_dump: Device is not a MicroKORG (Wrong manufacturer ID)\n", stderr );
+			if( ident->man != 0x42 )
+			{
+				fputs( "do_dump: Device is not a MicroKORG (Wrong manufacturer ID)\n", stderr );
+				return 0;
+			}
+			if( ident->family != 0x0058 )
+			{
+				fputs( "do_dump: Device is not a MicroKORG (Wrong family ID)\n", stderr );
+				return 0;
+			}
+			if( ident->member != 0x0011 )
+			{
+				fputs( "do_dump: Device is not a MicroKORG (Wrong member ID)\n", stderr );
+				return 0;
+			}
+			free( ident );
+		}
+		else
+		{
 			return 0;
 		}
-		if( ident->family != 0x0058 )
-		{
-			fputs( "do_dump: Device is not a MicroKORG (Wrong family ID)\n", stderr );
-			return 0;
-		}
-		if( ident->member != 0x0011 )
-		{
-			fputs( "do_dump: Device is not a MicroKORG (Wrong member ID)\n", stderr );
-			return 0;
-		}
-		free( ident );
-	}
-	else
-	{
-		return 0;
 	}
 
 	data = load_sysex( filename );
-	
+
 	if( data != NULL )
 	{
 		data[2] = 0x30+channel;
@@ -193,20 +196,23 @@ int do_upload( unsigned int channel, FILE *midiport, char *filename )
 		send_data( data, 297, midiport );
 		free( data );
 
-		data = get_data( 6, midiport );
-		
-		if( data != NULL )
+		if( ! nocheck )
 		{
-			if( 
-				( data[0] != 0xF0 ) ||
-				( data[1] != 0x42 ) ||
-				( data[2] != 0x30+channel ) ||
-				( data[3] != 0x58 ) ||
-				( data[4] != 0x23 ) 
-			)
+			data = get_data( 6, midiport );
+
+			if( data != NULL )
 			{
-				fputs( "do_upload: upload failed\n", stderr );
-				return 0;
+				if(
+					( data[0] != 0xF0 ) ||
+					( data[1] != 0x42 ) ||
+					( data[2] != 0x30+channel ) ||
+					( data[3] != 0x58 ) ||
+					( data[4] != 0x23 )
+				)
+				{
+					fputs( "do_upload: upload failed\n", stderr );
+					return 0;
+				}
 			}
 		}
 
@@ -273,7 +279,7 @@ int do_rename( char *inputfilename, char *outputfilename, char *newname )
 	int i, j;
 
 	data = load_sysex( inputfilename );
-	
+
 	if( data != NULL )
 	{
 		if( strlen( newname ) > 12 )
@@ -301,7 +307,7 @@ int do_rename( char *inputfilename, char *outputfilename, char *newname )
 			else
 				data[5+j] = ' ';
 		}
-		
+
 		if( ! save_sysex( data, outputfilename ) )
 		{
 			free( data );
@@ -330,6 +336,7 @@ void print_help( void )
 	puts( "\t-c chan\tSet midi channel\t\t\t1" );
 	puts( "\t-i file\tSet input filename (\"-\" for stdin)\t-" );
 	puts( "\t-o file\tSet output filename (\"-\" for stdout)\t-" );
+	puts( "\t-n\tDon't check replies of device during upload" );
 	puts( "Actions:" );
 	puts( "\t-I\tIdentify device" );
 	puts( "\t-d\tDownload current program" );
@@ -364,6 +371,7 @@ int main( int argc, char *argv[] )
 	char *newname;
 	FILE *midiport;
 	enum action action;
+	int nocheck;
 
 	midifilename = NULL;
 	inputfilename = NULL;
@@ -371,9 +379,10 @@ int main( int argc, char *argv[] )
 	newname = NULL;
 	channel = 1;
 	action = help;
-	result = 0;
+	nocheck = 0;
+	result = 1;
 
-	while( ( opt = getopt( argc, argv, "hvm:c:i:o:r:tIdu" ) ) != -1 )
+	while( ( opt = getopt( argc, argv, "hvm:c:i:o:r:tIdun" ) ) != -1 )
 	{
 		switch( opt )
 		{
@@ -406,6 +415,10 @@ int main( int argc, char *argv[] )
 				newname = strdup( optarg );
 			break;
 
+			case 'n':
+				nocheck = 1;
+			break;
+
 			case 'I':
 				action = ident;
 			break;
@@ -424,7 +437,7 @@ int main( int argc, char *argv[] )
 
 			default:
 			case '?':
-				fputs( "main: cannot parse commandline\n", stderr );                                                                           
+				fputs( "main: cannot parse commandline\n", stderr );
 				return 1;
 			break;
 		}
@@ -441,7 +454,7 @@ int main( int argc, char *argv[] )
 
 	if( ( channel < 1 ) || ( channel > 16 ) )
 	{
-		fputs( "main: channel out of range\n", stderr );                                                                           
+		fputs( "main: channel out of range\n", stderr );
 		return 1;
 	}
 
@@ -489,7 +502,7 @@ int main( int argc, char *argv[] )
 
 		if( action == upload )
 		{
-			result = do_upload( channel, midiport, inputfilename );
+			result = do_upload( channel, midiport, inputfilename, nocheck );
 		}
 
 		fclose( midiport );
@@ -498,6 +511,8 @@ int main( int argc, char *argv[] )
 	free( inputfilename );
 	free( outputfilename );
 
-	return 0;
+	if( result )
+		return 0;
+	else
+		return 1;
 }
-
